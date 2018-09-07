@@ -73,7 +73,7 @@ SSL mode handling. In case of self signed certificates the useStrictSSL mode opt
 #### options.conn.proxy
 Type: `String`
 
-If proxy URL is set, all requests to the ABAP server will be sent via proxy.
+Optional parameter to specify proxy used for communication with SAP NetWeaver ABAP server (for instance 'http://myproxyhost:3128').
 
 #### options.auth.user
 Type: `String`

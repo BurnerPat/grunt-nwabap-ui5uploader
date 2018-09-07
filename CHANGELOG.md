@@ -1,3 +1,8 @@
+## 0.2.10 (2018-09-07)
+
+### Features
+- Option `options.conn.proxy` added to specify a proxy for SAP NetWeaver ABAP server communcation (thanks to [anomistu](https://github.com/anomistu)).
+
 ## 0.2.9 (2018-06-01)
 
 ### Fixes
