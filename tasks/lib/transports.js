@@ -22,6 +22,7 @@ var XMLDocument = require('xmldoc').XmlDocument;
  * @param {string}  oOptions.conn.server        server url
  * @param {string}  oOptions.conn.client        sap client id
  * @param {boolean} oOptions.conn.useStrictSSL  force encrypted connection
+ * @param {string}  oOptions.conn.proxy         set connection proxy
  * @param {string}  oOptions.auth.user          username
  * @param {string}  oOptions.auth.pwd           password
  * @param {Logger} oLogger

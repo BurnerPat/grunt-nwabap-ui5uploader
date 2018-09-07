@@ -20,6 +20,7 @@ var ADT_BASE_URL = '/sap/bc/adt/';
  * @param {string} oConnection.server
  * @param {string} oConnection.client
  * @param {boolean} oConnection.useStrictSSL
+ * @param {string} oConnection.proxy
  * @param {object} oAuth
  * @param {string} oAuth.user
  * @param {string} oAuth.pwd
@@ -89,6 +90,10 @@ AdtClient.prototype.sendRequest = function (oRequest, fnRequestCallback) {
     }
 
     oRequest.strictSSL(me._oOptions.conn.useStrictSSL);
+
+    if (me._oOptions.conn.proxy) {
+        oRequest.proxy(me._oOptions.conn.proxy);
+    }
 
     if (me._oOptions.conn.client) {
         oRequest.query({

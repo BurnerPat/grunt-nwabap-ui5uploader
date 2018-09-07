@@ -28,7 +28,7 @@ var SLASH_ESCAPED = '%2f';
 var FileStore = function (oOptions, oLogger) {
     /*
      oOptions
-     - conn:[server, client, useStrictSSL]
+     - conn:[server, client, useStrictSSL, proxy]
      - auth:[user, pwd]
      - ui5:[language, transportno, package, bspcontainer (max 15 chars w/o ns), bspcontainer_text, calc_appindex]
      */
@@ -79,6 +79,10 @@ FileStore.prototype._sendRequest = function (oRequest, fnRequestCallback) {
     }
 
     oRequest.strictSSL(me._oOptions.conn.useStrictSSL);
+
+    if (me._oOptions.conn.proxy) {
+        oRequest.proxy(me._oOptions.conn.proxy);
+    }
 
     if (me._oOptions.conn.client) {
         oRequest.query({

@@ -70,6 +70,11 @@ Default: `true`
 
 SSL mode handling. In case of self signed certificates the useStrictSSL mode option can be set to `false` to allow an upload of files.
 
+#### options.conn.proxy
+Type: `String`
+
+If proxy URL is set, all requests to the ABAP server will be sent via proxy.
+
 #### options.auth.user
 Type: `String`
 

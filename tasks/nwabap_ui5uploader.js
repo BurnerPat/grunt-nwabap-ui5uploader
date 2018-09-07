@@ -95,7 +95,8 @@ module.exports = function (grunt) {
             conn: {
                 server: oOptions.conn.server,
                 client: oOptions.conn.client,
-                useStrictSSL: oOptions.conn.useStrictSSL
+                useStrictSSL: oOptions.conn.useStrictSSL,
+                proxy: oOptions.conn.proxy
             },
             auth: {
                 user: oOptions.auth.user,
