@@ -26,7 +26,8 @@ var HTTPSTAT = {
     created: 201,
     not_authorized: 403,
     not_found: 404,
-    not_allowed: 405
+    not_allowed: 405,
+    int_error: 500
 };
 
 /**
@@ -118,12 +119,12 @@ function splitIntoPathAndObject(sValue) {
 
 /**
  *
- * @param {object} oResponse response
+ * @param {object} oError error
  * @return {string} response error string
  */
-function createResponseError(oResponse) {
-    if (oResponse.error) {
-        return oResponse.error + ' (' + oResponse.body + ')';
+function createResponseError(oError) {
+    if (oError) {
+        return '' + oError;
     }
 
     return null;

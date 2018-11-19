@@ -1,3 +1,10 @@
+## 0.3.0 (2018-11-19)
+
+### General
+- Replaced `unirest` library by `request` library, because of a better maintenance support.
+- Removal of duplicated code.
+- Support for Node versions < 5.0.0 skipped.
+
 ## 0.2.10 (2018-09-07)
 
 ### Features

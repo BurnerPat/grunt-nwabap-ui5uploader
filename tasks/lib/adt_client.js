@@ -8,7 +8,7 @@
 
 'use strict';
 
-var unirest = require('unirest');
+var request = require('request');
 var util = require('./filestoreutil');
 var backoff = require('backoff');
 var ADT_BASE_URL = '/sap/bc/adt/';
@@ -35,6 +35,11 @@ function AdtClient(oConnection, oAuth, sLanguage, oLogger) {
         lang: sLanguage
     };
 
+    // remove suffix slashes from server URL
+    if (this._oOptions.conn && this._oOptions.conn.server) {
+        this._oOptions.conn.server = this._oOptions.conn.server.replace(/\/*$/, '');
+    }
+
     this._oLogger = oLogger;
 }
 
@@ -53,23 +58,33 @@ AdtClient.prototype._constructBaseUrl = function () {
  * @param {function} fnCallback callback function
  * @return {void}
  */
-AdtClient.prototype._determineCSRFToken = function (fnCallback) {
+AdtClient.prototype.determineCSRFToken = function (fnCallback) {
     if (this._sCSRFToken !== undefined) {
         fnCallback();
         return;
     }
 
-    var oRequest = unirest.get(this.buildUrl(ADT_BASE_URL + 'discovery'));
-    oRequest.headers({
-        'X-CSRF-Token': 'Fetch',
-        'accept': '*/*'
-    });
-    this.sendRequest(oRequest, function (oResponse) {
+    var sUrl = this.buildUrl(ADT_BASE_URL + 'discovery');
+
+    var oRequestOptions = {
+        url: sUrl,
+        headers: {
+            'X-CSRF-Token': 'Fetch',
+            'accept': '*/*'
+        }
+    };
+
+    this.sendRequest(oRequestOptions, function (oError, oResponse) {
+        if (oError) {
+            fnCallback(oError);
+            return;
+        }
+
         if (oResponse.statusCode === util.HTTPSTAT.ok) {
             this._sCSRFToken = oResponse.headers['x-csrf-token'];
             this._sSAPCookie = oResponse.headers['set-cookie'];
         }
-        fnCallback(util.createResponseError(oResponse));
+        fnCallback(null);
     }.bind(this));
 };
 
@@ -79,49 +94,62 @@ AdtClient.prototype.buildUrl = function (sUrl) {
 
 /**
  * Send a request to the server (adds additional information before sending, e.g. authentication information)
- * @param {unirest} oRequest Unirest request object
- * @param {function} fnRequestCallback Callback for unirest request
+ * @param {object} oRequestOptions request options object
+ * @param {function} fnRequestCallback Callback for request
  */
-AdtClient.prototype.sendRequest = function (oRequest, fnRequestCallback) {
+AdtClient.prototype.sendRequest = function (oRequestOptions, fnRequestCallback) {
     var me = this;
+    var oMutableRequestOptions = oRequestOptions;
 
     if (me._oOptions.auth) {
-        oRequest.auth({ user: me._oOptions.auth.user, pass: me._oOptions.auth.pwd });
+        oMutableRequestOptions.auth = {
+            user: me._oOptions.auth.user,
+            pass: me._oOptions.auth.pwd,
+            sendImmediately: true
+        };
     }
 
-    oRequest.strictSSL(me._oOptions.conn.useStrictSSL);
+    oMutableRequestOptions.strictSSL = me._oOptions.conn.useStrictSSL;
 
     if (me._oOptions.conn.proxy) {
-        oRequest.proxy(me._oOptions.conn.proxy);
+        oMutableRequestOptions.proxy = me._oOptions.conn.proxy;
     }
 
     if (me._oOptions.conn.client) {
-        oRequest.query({
-            'sap-client': encodeURIComponent(me._oOptions.conn.client)
-        });
+        if (!oMutableRequestOptions.hasOwnProperty('qs')) {
+            oMutableRequestOptions.qs = {};
+        }
+        oMutableRequestOptions.qs['sap-client'] = encodeURIComponent(me._oOptions.conn.client);
     }
 
     if (me._oOptions.lang) {
-        oRequest.query({
-            'sap-language': encodeURIComponent(me._oOptions.lang)
-        });
+        if (!oMutableRequestOptions.hasOwnProperty('qs')) {
+            oMutableRequestOptions.qs = {};
+        }
+        oMutableRequestOptions.qs['sap-language'] = encodeURIComponent(me._oOptions.lang);
     }
 
-    if (!oRequest.hasHeader('x-csrf-token') && this._sCSRFToken) {
-        oRequest.header('X-CSRF-Token', this._sCSRFToken);
+    if (this._sCSRFToken) {
+        if (!oMutableRequestOptions.hasOwnProperty('headers')) {
+            oMutableRequestOptions.headers = {};
+        }
+        oMutableRequestOptions.headers['x-csrf-token'] = this._sCSRFToken;
     }
 
-    if (!oRequest.hasHeader('cookie') && this._sSAPCookie) {
-        oRequest.header('Cookie', this._sSAPCookie);
+    if (this._sSAPCookie) {
+        if (!oMutableRequestOptions.hasOwnProperty('headers')) {
+            oMutableRequestOptions.headers = {};
+        }
+        oMutableRequestOptions.headers['cookie'] = this._sSAPCookie;
     }
 
-    var call = backoff.call(oRequest.end, function (oResponse) {
-        fnRequestCallback(oResponse);
+    var call = backoff.call(request, oRequestOptions, function (oError, oResponse) {
+        fnRequestCallback(oError, oResponse);
     });
 
-    call.retryIf(function (oResponse) {
-        if (oResponse.error.syscall !== undefined) {
-            me._oLogger.log('NW ABAP UI5 Uploader: Connection error has occurred, retrying (' + call.getNumRetries() + '): ' + JSON.stringify(oResponse.error));
+    call.retryIf(function (oError, oResponse) {
+        if (oError !== undefined) {
+            me._oLogger.log('NW ABAP UI5 Uploader: Connection error has occurred, retrying (' + call.getNumRetries() + '): ' + JSON.stringify(oError));
             return true;
         }
         return false;
@@ -129,7 +157,7 @@ AdtClient.prototype.sendRequest = function (oRequest, fnRequestCallback) {
 
     call.setStrategy(new backoff.ExponentialStrategy({
         initialDelay: 500,
-        maxDelay: 50000
+        maxDelay: 5000
     }));
 
     call.failAfter(10);

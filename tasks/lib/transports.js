@@ -10,7 +10,6 @@
 
 var util = require('util');
 var fsutil = require('./filestoreutil');
-var unirest = require('unirest');
 var CTS_BASE_URL = '/sap/bc/adt/cts/transports';
 var AdtClient = require('./adt_client');
 var XMLDocument = require('xmldoc').XmlDocument;
@@ -25,50 +24,74 @@ var XMLDocument = require('xmldoc').XmlDocument;
  * @param {string}  oOptions.conn.proxy         set connection proxy
  * @param {string}  oOptions.auth.user          username
  * @param {string}  oOptions.auth.pwd           password
- * @param {Logger} oLogger
+ * @param {Logger}  oLogger
  * @constructor
  */
 function Transports(oOptions, oLogger) {
-    this.client = new AdtClient(oOptions.conn, oOptions.auth, undefined, oLogger);
+    this._client = new AdtClient(oOptions.conn, oOptions.auth, undefined, oLogger);
 }
 
 Transports.prototype.createTransport = function (sPackageName, sRequestText, fnCallback) {
     var sPayload = this.getCreateTransportPayload(sPackageName, sRequestText);
 
-    var sUrl = this.client.buildUrl(CTS_BASE_URL);
-    this.client._determineCSRFToken(function (x) {
-        var oRequest = unirest('POST', sUrl, {}, sPayload);
-        oRequest.header('accept', '*/*');
-        this.client.sendRequest(oRequest, function (oResponse) {
+    var sUrl = this._client.buildUrl(CTS_BASE_URL);
+    this._client.determineCSRFToken(function () {
+        var oRequestOptions = {
+            method: 'POST',
+            url: sUrl,
+            headers: {
+                'accept': '*/*'
+            },
+            body: sPayload
+        };
+
+        this._client.sendRequest(oRequestOptions, function (oError, oResponse) {
+            if (oError) {
+                fnCallback(new Error(fsutil.createResponseError(oError)));
+                return;
+            }
+
             if (oResponse.status === fsutil.HTTPSTAT.ok) {
                 fnCallback(null, oResponse.body.split('/').pop());
                 return;
+            } else {
+                fnCallback(null);
             }
-            fnCallback(new Error(fsutil.createResponseError(oResponse)));
         });
     }.bind(this));
 };
 
 /**
- * Determines if a transport with the given texdt already exists. If true the callback returns the transport no
- * otherwise the cb returns null
- * @param {String} transportText
+ * Determines if a transport with the given text already exists. If true the callback returns the transport no
+ * otherwise the cb returns null.
  * @param {Function} fnCallback
  */
-Transports.prototype.determineExistingTransport = function (transportText, fnCallback) {
-    var sUrl = this.client.buildUrl(CTS_BASE_URL + '?_action=FIND&trfunction=K');
-    var oRequest = unirest('GET', sUrl, {});
-    oRequest.header('accept', '*/*');
-    this.client.sendRequest(oRequest, function (oResponse) {
-        if (oResponse.status === fsutil.HTTPSTAT.ok) {
+Transports.prototype.determineExistingTransport = function (fnCallback) {
+    var sUrl = this._client.buildUrl(CTS_BASE_URL + '?_action=FIND&trfunction=K');
+
+    var oRequestOptions = {
+        url: sUrl,
+        headers: {
+            'accept': '*/*'
+        }
+    };
+
+    this._client.sendRequest(oRequestOptions, function (oError, oResponse) {
+        if (oError) {
+            fnCallback(new Error(fsutil.createResponseError(oError)));
+            return;
+        }
+
+        if (oResponse.statusCode === fsutil.HTTPSTAT.ok) {
             if (!oResponse.body) {
                 return fnCallback(null, null);
             }
             var oParsed = new XMLDocument(oResponse.body);
             var transportNo = oParsed.valueWithPath('asx:values.DATA.CTS_REQ_HEADER.TRKORR');
             return fnCallback(null, transportNo);
+        } else {
+            fnCallback(null);
         }
-        fnCallback(new Error(fsutil.createResponseError(oResponse)));
     });
 };
 

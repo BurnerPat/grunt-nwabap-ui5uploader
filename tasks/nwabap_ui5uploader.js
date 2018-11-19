@@ -55,7 +55,8 @@ module.exports = function (grunt) {
             return;
         }
 
-        if (oOptions.ui5.package !== '$TMP' && !oOptions.ui5.transportno && oOptions.ui5.create_transport !== true) {
+        if (oOptions.ui5.package !== '$TMP' && !oOptions.ui5.transportno
+            && oOptions.ui5.create_transport !== true && oOptions.ui5.transport_use_user_match !== true) {
             grunt.fail.warn('For packages <> "$TMP" a transport number is necessary.');
             done();
             return;
@@ -141,7 +142,7 @@ module.exports = function (grunt) {
          * @param {Object} oTransportManager - Transport manager
          */
         function uploadWithTransportUserMatch(oTransportManager) {
-            oTransportManager.determineExistingTransport(oOptions.ui5.transport_text, function (oError, sTransportNo) {
+            oTransportManager.determineExistingTransport(function (oError, sTransportNo) {
                 if (sTransportNo) {
                     oFileStoreOptions.ui5.transportno = sTransportNo;
                     syncFiles(oFileStoreOptions, oLogger, aFiles, oOptions);

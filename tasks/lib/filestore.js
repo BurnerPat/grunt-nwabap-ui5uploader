@@ -9,12 +9,11 @@
 'use strict';
 
 var async = require('async');
-var unirest = require('unirest');
 var XMLDocument = require('xmldoc').XmlDocument;
 var util = require('./filestoreutil');
 var fs = require('fs');
 var isBinaryFile = require('isbinaryfile');
-var backoff = require('backoff');
+var AdtClient = require('./adt_client');
 
 var FILESTORE_BASE_URL = '/sap/bc/adt/filestore/ui5-bsp/objects';
 var SLASH_ESCAPED = '%2f';
@@ -45,15 +44,8 @@ FileStore.prototype._init = function (oOptions, oLogger) {
     this._oOptions = oOptions;
     // logger
     this._oLogger = oLogger;
-    // CSRF Token
-    this._sCSRFToken = null;
-    // SAP Cookie
-    this._sSAPCookie = null;
 
-    // remove suffix slashes from server URL
-    if (this._oOptions.conn && this._oOptions.conn.server) {
-        this._oOptions.conn.server = this._oOptions.conn.server.replace(/\/*$/, '');
-    }
+    this._client = new AdtClient(oOptions.conn, oOptions.auth, oOptions.ui5.language, oLogger);
 };
 
 /**
@@ -65,85 +57,6 @@ FileStore.prototype._constructBaseUrl = function () {
     return this._oOptions.conn.server + FILESTORE_BASE_URL;
 };
 
-/**
- * Send a request to the server (adds additional information before sending, e.g. authentication information)
- * @private
- * @param {object} oRequest Unirest request object
- * @param {function} fnRequestCallback Callback for unirest request
- */
-FileStore.prototype._sendRequest = function (oRequest, fnRequestCallback) {
-    var me = this;
-
-    if (me._oOptions.auth) {
-        oRequest.auth({ user: me._oOptions.auth.user, pass: me._oOptions.auth.pwd });
-    }
-
-    oRequest.strictSSL(me._oOptions.conn.useStrictSSL);
-
-    if (me._oOptions.conn.proxy) {
-        oRequest.proxy(me._oOptions.conn.proxy);
-    }
-
-    if (me._oOptions.conn.client) {
-        oRequest.query({
-            'sap-client': encodeURIComponent(me._oOptions.conn.client)
-        });
-    }
-
-    if (me._oOptions.ui5.language) {
-        oRequest.query({
-            'sap-language': encodeURIComponent(me._oOptions.ui5.language)
-        });
-    }
-
-    var call = backoff.call(oRequest.end, function (oResponse) {
-        fnRequestCallback(oResponse);
-    });
-
-    call.retryIf(function (oResponse) {
-        if (oResponse.error.syscall !== undefined) {
-            me._oLogger.log('NW ABAP UI5 Uploader: Connection error has occurred, retrying (' + call.getNumRetries() + '): ' + JSON.stringify(oResponse.error));
-            return true;
-        }
-        return false;
-    });
-
-    call.setStrategy(new backoff.ExponentialStrategy({
-        initialDelay: 500,
-        maxDelay: 50000
-    }));
-
-    call.failAfter(10);
-
-    call.start();
-};
-
-/**
- * Determine a CSRF Token which is necessary for POST/PUT/DELETE operations; also the sapCookie is determined
- * @private
- * @param {function} fnCallback callback function
- */
-FileStore.prototype._determineCSRFToken = function (fnCallback) {
-    var me = this;
-
-    if (me._sCSRFToken !== null) {
-        fnCallback();
-    } else {
-        var oRequest = unirest.get(me._constructBaseUrl());
-        oRequest.headers({
-            'X-CSRF-Token': 'Fetch',
-            'connection': 'keep-alive',
-            'accept': '*/*'
-        });
-        me._sendRequest(oRequest, function (oResponse) {
-            if (oResponse.statusCode === util.HTTPSTAT.ok) {
-                me._sCSRFToken = oResponse.headers['x-csrf-token'];
-                me._sSAPCookie = oResponse.headers['set-cookie'];
-            }
-            fnCallback(util.createResponseError(oResponse));
-        });
-    }
-};
 
 /**
  * Get Metadata of BSP container
@@ -153,9 +66,12 @@ FileStore.prototype._determineCSRFToken = function (fnCallback) {
 FileStore.prototype.getMetadataBSPContainer = function (fnCallback) {
     var sUrl = this._constructBaseUrl() + '/' + encodeURIComponent(this._oOptions.ui5.bspcontainer);
 
-    var oRequest = unirest.get(sUrl);
-    this._sendRequest(oRequest, function (oResponse) {
-        fnCallback(util.createResponseError(oResponse), oResponse);
+    var oRequestOptions = {
+        url: sUrl
+    };
+
+    this._client.sendRequest(oRequestOptions, function (oError, oResponse) {
+        fnCallback(util.createResponseError(oError), oResponse);
     });
 };
 
@@ -168,9 +84,14 @@ FileStore.prototype.createBSPContainer = function (fnCallback) {
     var me = this;
 
     async.series([
-        me._determineCSRFToken.bind(me),
+        me._client.determineCSRFToken.bind(me._client),
         me.getMetadataBSPContainer.bind(me)
     ], function (oError, aResult) {
+        if (oError) {
+            fnCallback(util.createResponseError(oError));
+            return;
+        }
+
         if (aResult[1].statusCode === util.HTTPSTAT.not_found) {
             // create BSP Container
             var sUrl = me._constructBaseUrl() +
@@ -183,26 +104,30 @@ FileStore.prototype.createBSPContainer = function (fnCallback) {
                 sUrl += '&corrNr=' + encodeURIComponent(me._oOptions.ui5.transportno);
             }
 
-            var oRequest = unirest.post(sUrl);
-            oRequest.headers(
-                {
-                    'X-CSRF-Token': me._sCSRFToken,
+            var oRequestOptions = {
+                method: 'POST',
+                url: sUrl,
+                headers: {
                     'Content-Type': 'application/octet-stream',
                     'Accept-Language': 'en-EN',
-                    'accept': '*/*',
-                    'Cookie': me._sSAPCookie
+                    'accept': '*/*'
                 }
-            );
+            };
 
-            me._sendRequest(oRequest, function (oResponse) {
+            me._client.sendRequest(oRequestOptions, function (oError, oResponse) {
+                if (oError) {
+                    fnCallback(new Error(util.createResponseError(oError)));
+                    return;
+                }
+
                 if (oResponse.statusCode === util.HTTPSTAT.created || oResponse.statusCode === util.HTTPSTAT.not_allowed) {
                     fnCallback(null, oResponse);
                 } else {
-                    fnCallback(util.createResponseError(oResponse), oResponse);
+                    fnCallback(null);
                 }
             });
         } else {
-            fnCallback(oError);
+            fnCallback(null);
         }
     });
 };
@@ -225,22 +150,26 @@ FileStore.prototype.calcAppIndex = function (fnCallback) {
         '/sap/bc/adt/filestore/ui5-bsp/appindex/' +
         encodeURIComponent(this._oOptions.ui5.bspcontainer);
 
-    var oRequest = unirest.post(sUrl);
-    oRequest.headers(
-        {
-            'X-CSRF-Token': this._sCSRFToken,
+    var oRequestOptions = {
+        method: 'POST',
+        url: sUrl,
+        headers: {
             'Content-Type': 'application/octet-stream',
             'Accept-Language': 'en-EN',
-            'accept': '*/*',
-            'Cookie': this._sSAPCookie
+            'accept': '*/*'
         }
-    );
+    };
 
-    this._sendRequest(oRequest, function (oResponse) {
+    this._client.sendRequest(oRequestOptions, function (oError, oResponse) {
+        if (oError) {
+            fnCallback(new Error(util.createResponseError(oError)));
+            return;
+        }
+
         if (oResponse.statusCode === util.HTTPSTAT.ok) {
             fnCallback(null, oResponse);
         } else {
-            fnCallback(util.createResponseError(oResponse), oResponse);
+            fnCallback(null);
         }
     });
 };
@@ -279,9 +208,16 @@ FileStore.prototype.syncFiles = function (aFiles, sCwd, fnCallback) {
 
                             var sUrl = me._constructBaseUrl() + '/' + encodeURIComponent(sFolder) + '/content';
 
-                            var oRequest = unirest.get(sUrl);
+                            var oRequestOptions = {
+                                url: sUrl
+                            };
 
-                            me._sendRequest(oRequest, function (oResponse) {
+                            me._client.sendRequest(oRequestOptions, function (oError, oResponse) {
+                                if (oError) {
+                                    fnCallback(new Error(util.createResponseError(oError)));
+                                    return;
+                                }
+
                                 if (oResponse.statusCode === util.HTTPSTAT.not_found) { //BSP container does not exist
                                     fnCallbackAsyncL3(null, oResponse);
                                     return;
@@ -511,7 +447,7 @@ FileStore.prototype.syncFiles = function (aFiles, sCwd, fnCallback) {
 FileStore.prototype.syncFolder = function (sFolder, sModif, fnCallback) {
     var me = this;
 
-    var oRequest = null;
+    var oRequestOptions = null;
     var sUrl = null;
 
     switch (sModif) {
@@ -526,16 +462,15 @@ FileStore.prototype.syncFolder = function (sFolder, sModif, fnCallback) {
                 sUrl += '&corrNr=' + encodeURIComponent(me._oOptions.ui5.transportno);
             }
 
-            oRequest = unirest.post(sUrl);
-
-            oRequest.headers(
-                {
-                    'X-CSRF-Token': me._sCSRFToken,
+            oRequestOptions = {
+                method: 'POST',
+                url: sUrl,
+                headers: {
                     'Content-Type': 'application/octet-stream',
                     'Accept-Language': 'en-EN',
-                    'accept': '*/*',
-                    'Cookie': me._sSAPCookie
-                });
+                    'accept': '*/*'
+                }
+            };
 
             break;
 
@@ -554,16 +489,16 @@ FileStore.prototype.syncFolder = function (sFolder, sModif, fnCallback) {
                 sUrl += '&corrNr=' + encodeURIComponent(me._oOptions.ui5.transportno);
             }
 
-            oRequest = unirest.delete(sUrl);
-            oRequest.headers(
-                {
-                    'X-CSRF-Token': me._sCSRFToken,
+            oRequestOptions = {
+                method: 'DELETE',
+                url: sUrl,
+                headers: {
                     'Content-Type': 'application/octet-stream',
                     'Accept-Language': 'en-EN',
                     'accept': '*/*',
-                    'Cookie': me._sSAPCookie,
                     'If-Match': '*'
-                });
+                }
+            };
 
             break;
 
@@ -572,13 +507,14 @@ FileStore.prototype.syncFolder = function (sFolder, sModif, fnCallback) {
             return;
     }
 
-    me._sendRequest(oRequest, function (oResponse) {
-        if (oResponse.error) {
-            fnCallback(util.createResponseError(oResponse), oResponse);
-        } else {
-            me._oLogger.log('NW ABAP UI5 Uploader: folder ' + sFolder + ' ' + sModif + 'd.');
-            fnCallback(null, oResponse);
+    me._client.sendRequest(oRequestOptions, function (oError, oResponse) {
+        if (oError) {
+            fnCallback(new Error(util.createResponseError(oError)));
+            return;
         }
+
+        me._oLogger.log('NW ABAP UI5 Uploader: folder ' + sFolder + ' ' + sModif + 'd.');
+        fnCallback(null, oResponse);
     });
 
 };
@@ -594,7 +530,7 @@ FileStore.prototype.syncFolder = function (sFolder, sModif, fnCallback) {
 FileStore.prototype.syncFile = function (sFile, sModif, sCwd, fnCallback) {
     var me = this;
 
-    var oRequest = null;
+    var oRequestOptions = null;
     var sUrl = null;
     var oFileContent = null;
     var bBinaryFile = false;
@@ -620,20 +556,21 @@ FileStore.prototype.syncFile = function (sFile, sModif, sCwd, fnCallback) {
                 sUrl += '&corrNr=' + encodeURIComponent(me._oOptions.ui5.transportno);
             }
 
-            oRequest = unirest.post(sUrl);
-            oRequest.headers(
-                {
-                    'X-CSRF-Token': me._sCSRFToken,
+            oRequestOptions = {
+                method: 'POST',
+                url: sUrl,
+                headers: {
                     'Content-Type': 'application/octet-stream',
                     'Accept-Language': 'en-EN',
-                    'accept': '*/*',
-                    'Cookie': me._sSAPCookie
-                });
+                    'accept': '*/*'
+                }
+            };
+
 
             if (oFileContent.length > 0) {
-                oRequest.send(oFileContent);
+                oRequestOptions.body = oFileContent;
             } else {
-                oRequest.send(' ');
+                oRequestOptions.body = ' ';
             }
 
             break;
@@ -649,21 +586,21 @@ FileStore.prototype.syncFile = function (sFile, sModif, sCwd, fnCallback) {
                 sUrl += '&corrNr=' + encodeURIComponent(me._oOptions.ui5.transportno);
             }
 
-            oRequest = unirest.put(sUrl);
-            oRequest.headers(
-                {
-                    'X-CSRF-Token': me._sCSRFToken,
+            oRequestOptions = {
+                method: 'PUT',
+                url: sUrl,
+                headers: {
                     'Content-Type': 'application/octet-stream',
                     'Accept-Language': 'en-EN',
                     'accept': '*/*',
-                    'Cookie': me._sSAPCookie,
                     'If-Match': '*'
-                });
+                }
+            };
 
             if (oFileContent.length > 0) {
-                oRequest.send(oFileContent);
+                oRequestOptions.body = oFileContent;
             } else {
-                oRequest.send(' ');
+                oRequestOptions.body = ' ';
             }
 
             break;
@@ -677,16 +614,16 @@ FileStore.prototype.syncFile = function (sFile, sModif, sCwd, fnCallback) {
                 sUrl += '?corrNr=' + encodeURIComponent(me._oOptions.ui5.transportno);
             }
 
-            oRequest = unirest.delete(sUrl);
-            oRequest.headers(
-                {
-                    'X-CSRF-Token': me._sCSRFToken,
+            oRequestOptions = {
+                method: 'DELETE',
+                url: sUrl,
+                headers: {
                     'Content-Type': 'application/octet-stream',
                     'Accept-Language': 'en-EN',
                     'accept': '*/*',
-                    'Cookie': me._sSAPCookie,
                     'If-Match': '*'
-                });
+                }
+            };
 
             break;
 
@@ -695,13 +632,18 @@ FileStore.prototype.syncFile = function (sFile, sModif, sCwd, fnCallback) {
             return;
     }
 
-    me._sendRequest(oRequest, function (oResponse) {
-        if (oResponse.error) {
+    me._client.sendRequest(oRequestOptions, function (oError, oResponse) {
+        if (oError) {
+            fnCallback(util.createResponseError(oError));
+            return;
+        }
+
+        if (oResponse.statusCode == util.HTTPSTAT.int_error) {
             if (me._oOptions.ui5.transport_use_locked) {
                 if (oResponse.body) {
                     var aMatched = oResponse.body.match(/.{3}K\d{6}/g);
                     if (aMatched && aMatched.length > 0) {
-                        me._oLogger.log('NW ABAP UI5 Uploader: Warning: the current BSP Application was already locked in ' + aMatched[0] + '. Now we are using transport ' + aMatched[0] + ' instead of ' + me._oOptions.ui5.transportno + '.');
+                        me._oLogger.log('NW ABAP UI5 Uploader: Warning: the current BSP Application was already locked in ' + aMatched[0] + '. Transport ' + aMatched[0] + ' is used instead of ' + me._oOptions.ui5.transportno + '.');
                         me._oOptions.ui5.transportno = aMatched[0];
                         me.syncFile(sFile, sModif, sCwd, function (a, b) {
                             fnCallback(a, b);
@@ -710,7 +652,7 @@ FileStore.prototype.syncFile = function (sFile, sModif, sCwd, fnCallback) {
                     }
                 }
             }
-            fnCallback(util.createResponseError(oResponse), oResponse);
+            fnCallback(util.createResponseError(oResponse.body), oResponse);
         } else {
             me._oLogger.log('NW ABAP UI5 Uploader: file ' + sFile + ' ' + sModif + 'd.');
             fnCallback(null, oResponse);
