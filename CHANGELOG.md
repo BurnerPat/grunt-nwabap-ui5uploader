@@ -1,4 +1,9 @@
-## 0.3.0 (2018-11-19)
+# 0.3.1 (2018-11-26)
+
+### Fixes
+- Fixed issue in check if a transport for the user exists.
+
+# 0.3.0 (2018-11-19)
 
 ### General
 - Replaced `unirest` library by `request` library, because of a better maintenance support.
