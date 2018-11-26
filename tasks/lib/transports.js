@@ -51,7 +51,7 @@ Transports.prototype.createTransport = function (sPackageName, sRequestText, fnC
                 return;
             }
 
-            if (oResponse.status === fsutil.HTTPSTAT.ok) {
+            if (oResponse.statusCode === fsutil.HTTPSTAT.ok) {
                 fnCallback(null, oResponse.body.split('/').pop());
                 return;
             } else {
