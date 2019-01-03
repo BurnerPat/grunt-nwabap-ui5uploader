@@ -2,7 +2,7 @@
  * grunt-nwabap-ui5uploader
  * https://github.com/pfefferf/grunt-nwabap-ui5uploader
  *
- * Copyright (c) 2018 Florian Pfeffer
+ * Copyright (c) 2016 - 2019 Florian Pfeffer
  * Licensed under the Apache-2.0 license.
  */
 

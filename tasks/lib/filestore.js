@@ -2,7 +2,7 @@
  * grunt-nwabap-ui5uploader
  * https://github.com/pfefferf/grunt-nwabap-ui5uploader
  *
- * Copyright (c) 2018 Florian Pfeffer
+ * Copyright (c) 2016 - 2019 Florian Pfeffer
  * Licensed under the Apache-2.0 license.
  */
 
@@ -71,7 +71,16 @@ FileStore.prototype.getMetadataBSPContainer = function (fnCallback) {
     };
 
     this._client.sendRequest(oRequestOptions, function (oError, oResponse) {
-        fnCallback(util.createResponseError(oError), oResponse);
+        if (oError) {
+            fnCallback(util.createResponseError(oError));
+            return;
+        } else if (oResponse.statusCode !== util.HTTPSTAT.ok && oResponse.statusCode !== util.HTTPSTAT.not_found) {
+            fnCallback(new Error(`Operation Get BSP Container Metadata: Expected status code ${util.HTTPSTAT.ok} or ${util.HTTPSTAT.not_found}, actual status code ${oResponse.statusCode}, response body '${oResponse.body}'`));
+            return;
+        } else {
+            fnCallback(null, oResponse);
+            return;
+        }
     });
 };
 
@@ -118,12 +127,12 @@ FileStore.prototype.createBSPContainer = function (fnCallback) {
                 if (oError) {
                     fnCallback(new Error(util.createResponseError(oError)));
                     return;
-                }
-
-                if (oResponse.statusCode === util.HTTPSTAT.created || oResponse.statusCode === util.HTTPSTAT.not_allowed) {
-                    fnCallback(null, oResponse);
+                } else if (oResponse.statusCode !== util.HTTPSTAT.created) {
+                    fnCallback(new Error(`Operation Create BSP Container: Expected status code ${util.HTTPSTAT.created}, actual status code ${oResponse.statusCode}, response body '${oResponse.body}'`));
+                    return;
                 } else {
-                    fnCallback(null);
+                    fnCallback(null, oResponse);
+                    return;
                 }
             });
         } else {
@@ -164,12 +173,12 @@ FileStore.prototype.calcAppIndex = function (fnCallback) {
         if (oError) {
             fnCallback(new Error(util.createResponseError(oError)));
             return;
-        }
-
-        if (oResponse.statusCode === util.HTTPSTAT.ok) {
-            fnCallback(null, oResponse);
+        } else if (oResponse.statusCode !== util.HTTPSTAT.ok) {
+            fnCallback(new Error(`Operation Application Index Recalculation: Expected status code ${util.HTTPSTAT.ok}, actual status code ${oResponse.statusCode}, response body '${oResponse.body}'`));
+            return;
         } else {
-            fnCallback(null);
+            fnCallback(null, oResponse);
+            return;
         }
     });
 };
@@ -215,6 +224,9 @@ FileStore.prototype.syncFiles = function (aFiles, sCwd, fnCallback) {
                             me._client.sendRequest(oRequestOptions, function (oError, oResponse) {
                                 if (oError) {
                                     fnCallback(new Error(util.createResponseError(oError)));
+                                    return;
+                                } else if (oResponse.statusCode !== util.HTTPSTAT.ok && oResponse.statusCode !== util.HTTPSTAT.not_found ) {
+                                    fnCallback(new Error(`Operation Server File Determination: Expected status code ${util.HTTPSTAT.ok} or ${util.HTTPSTAT.not_found}, actual status code ${oResponse.statusCode}, response body '${oResponse.body}'`));
                                     return;
                                 }
 

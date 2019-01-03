@@ -2,7 +2,7 @@
  * grunt-nwabap-ui5uploader
  * https://github.com/pfefferf/grunt-nwabap-ui5uploader
  *
- * Copyright (c) 2018 Florian Pfeffer
+ * Copyright (c) 2016 - 2019 Florian Pfeffer
  * Licensed under the Apache-2.0 license.
  */
 
@@ -49,13 +49,12 @@ Transports.prototype.createTransport = function (sPackageName, sRequestText, fnC
             if (oError) {
                 fnCallback(new Error(fsutil.createResponseError(oError)));
                 return;
-            }
-
-            if (oResponse.statusCode === fsutil.HTTPSTAT.ok) {
-                fnCallback(null, oResponse.body.split('/').pop());
+            } else if (oResponse.statuscode !== fsutil.HTTPSTAT.ok) {
+                fnCallback(new Error(`Operation Create Transport: Expected status code ${util.HTTPSTAT.ok}, actual status code ${oResponse.statusCode}`));
                 return;
             } else {
-                fnCallback(null);
+                fnCallback(null, oResponse.body.split('/').pop());
+                return;
             }
         });
     }.bind(this));
@@ -80,17 +79,17 @@ Transports.prototype.determineExistingTransport = function (fnCallback) {
         if (oError) {
             fnCallback(new Error(fsutil.createResponseError(oError)));
             return;
-        }
-
-        if (oResponse.statusCode === fsutil.HTTPSTAT.ok) {
+        } else if (oResponse.statusCode !== fsutil.HTTPSTAT.ok) {
+            fnCallback(new Error(`Operation Existing Transport Determination: Expected status code ${util.HTTPSTAT.ok}, actual status code ${oResponse.statusCode}`));
+            return;
+        } else {
             if (!oResponse.body) {
                 return fnCallback(null, null);
             }
             var oParsed = new XMLDocument(oResponse.body);
             var transportNo = oParsed.valueWithPath('asx:values.DATA.CTS_REQ_HEADER.TRKORR');
-            return fnCallback(null, transportNo);
-        } else {
-            fnCallback(null);
+            fnCallback(null, transportNo);
+            return;
         }
     });
 };

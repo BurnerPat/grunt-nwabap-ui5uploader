@@ -1,3 +1,8 @@
+# 0.3.2 (2019-01-03)
+
+### General
+- More detailed information in case an ADT API call fails (expected HTTP Status Code, actual HTTP Status Code, response body).
+
 # 0.3.1 (2018-11-26)
 
 ### Fixes

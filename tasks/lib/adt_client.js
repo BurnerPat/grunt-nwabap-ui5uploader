@@ -2,7 +2,7 @@
  * grunt-nwabap-ui5uploader
  * https://github.com/pfefferf/grunt-nwabap-ui5uploader
  *
- * Copyright (c) 2018 Florian Pfeffer
+ * Copyright (c) 2016 - 2019 Florian Pfeffer
  * Licensed under the Apache-2.0 license.
  */
 
@@ -78,13 +78,15 @@ AdtClient.prototype.determineCSRFToken = function (fnCallback) {
         if (oError) {
             fnCallback(oError);
             return;
-        }
-
-        if (oResponse.statusCode === util.HTTPSTAT.ok) {
+        } else if (oResponse.statusCode !== util.HTTPSTAT.ok) {
+            fnCallback(new Error(`Operation CSRF Token Determination: Expected status code ${util.HTTPSTAT.ok}, actual status code ${oResponse.statusCode}, response body '${oResponse.body}'`));
+            return;
+        } else {
             this._sCSRFToken = oResponse.headers['x-csrf-token'];
             this._sSAPCookie = oResponse.headers['set-cookie'];
+            fnCallback(null);
+            return;
         }
-        fnCallback(null);
     }.bind(this));
 };
 
