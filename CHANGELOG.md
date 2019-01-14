@@ -1,3 +1,9 @@
+# 0.3.3 (2019-01-14)
+
+### Fixes
+- Fixed issue regarding response status code check (thanks to [BurnerPat](https://github.com/BurnerPat)).
+
+
 # 0.3.2 (2019-01-03)
 
 ### General
