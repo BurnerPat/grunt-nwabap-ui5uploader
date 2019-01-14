@@ -49,8 +49,8 @@ Transports.prototype.createTransport = function (sPackageName, sRequestText, fnC
             if (oError) {
                 fnCallback(new Error(fsutil.createResponseError(oError)));
                 return;
-            } else if (oResponse.statuscode !== fsutil.HTTPSTAT.ok) {
-                fnCallback(new Error(`Operation Create Transport: Expected status code ${util.HTTPSTAT.ok}, actual status code ${oResponse.statusCode}`));
+            } else if (oResponse.statusCode !== fsutil.HTTPSTAT.ok) {
+                fnCallback(new Error(`Operation Create Transport: Expected status code ${fsutil.HTTPSTAT.ok}, actual status code ${oResponse.statusCode}`));
                 return;
             } else {
                 fnCallback(null, oResponse.body.split('/').pop());
@@ -80,7 +80,7 @@ Transports.prototype.determineExistingTransport = function (fnCallback) {
             fnCallback(new Error(fsutil.createResponseError(oError)));
             return;
         } else if (oResponse.statusCode !== fsutil.HTTPSTAT.ok) {
-            fnCallback(new Error(`Operation Existing Transport Determination: Expected status code ${util.HTTPSTAT.ok}, actual status code ${oResponse.statusCode}`));
+            fnCallback(new Error(`Operation Existing Transport Determination: Expected status code ${fsutil.HTTPSTAT.ok}, actual status code ${oResponse.statusCode}`));
             return;
         } else {
             if (!oResponse.body) {
