@@ -225,7 +225,7 @@ FileStore.prototype.syncFiles = function (aFiles, sCwd, fnCallback) {
                                 if (oError) {
                                     fnCallback(new Error(util.createResponseError(oError)));
                                     return;
-                                } else if (oResponse.statusCode !== util.HTTPSTAT.ok && oResponse.statusCode !== util.HTTPSTAT.not_found ) {
+                                } else if (oResponse.statusCode !== util.HTTPSTAT.ok && oResponse.statusCode !== util.HTTPSTAT.not_found) {
                                     fnCallback(new Error(`Operation Server File Determination: Expected status code ${util.HTTPSTAT.ok} or ${util.HTTPSTAT.not_found}, actual status code ${oResponse.statusCode}, response body '${oResponse.body}'`));
                                     return;
                                 }
@@ -247,7 +247,10 @@ FileStore.prototype.syncFiles = function (aFiles, sCwd, fnCallback) {
                                     var sCurrId = oChild.valueWithPath('atom:id');
                                     var sCurrType = oChild.valueWithPath('atom:category@term');
 
-                                    aArtifactsServer.push({ type: sCurrType, id: sCurrId });
+                                    aArtifactsServer.push({
+                                        type: sCurrType,
+                                        id: sCurrId
+                                    });
 
                                     if (sCurrType === util.OBJECT_TYPE.folder) {
                                         aFolders.push(sCurrId);
@@ -354,6 +357,38 @@ FileStore.prototype.syncFiles = function (aFiles, sCwd, fnCallback) {
                 return oItem;
             });
 
+            // Apply the matcher function if it exists
+            if (typeof me._oOptions.sync.isMatch === "function") {
+                var aArtifactsFiltered = [];
+                var aFoldersToCheck = [];
+
+                // Filter the array based on the matcher function, filling the two arrays
+                aArtifactsSync.forEach(function (oItem) {
+                    // We have to strip the root slash at the start of the path
+                    if (me._oOptions.sync.isMatch(oItem.id.substring(1))) {
+                        aArtifactsFiltered.push(oItem);
+                    } else if (oItem.type === util.OBJECT_TYPE.folder) {
+                        // If the item did not pass the filter and is a folder, we add it to the other array
+                        aFoldersToCheck.push(oItem);
+                    }
+                });
+
+                // Now we have to also add back any folders that are not covered by the matcher
+                // but contains anything that has been changed and that passed the matcher.
+                aFoldersToCheck.forEach(function (oFolder) {
+                    // Just search for anything that has an id that starts with the folder id
+                    var bHasChildren = aArtifactsFiltered.reduce(function (bAcc, oItem) {
+                        return bAcc || (oItem.id.indexOf(oFolder.id + "/") === 0);
+                    }, false);
+
+                    if (bHasChildren) {
+                        aArtifactsFiltered.push(oFolder);
+                    }
+                });
+
+                aArtifactsSync = aArtifactsFiltered;
+            }
+
             me._oLogger.logVerbose('Artifacts to Sync: ', aArtifactsSync);
 
             // sort
@@ -410,7 +445,6 @@ FileStore.prototype.syncFiles = function (aFiles, sCwd, fnCallback) {
 
         // L1, step 4: do synchronization of folders and files
         function (fnCallbackAsyncL1) {
-
             async.whilst(
                 function () {
                     return aArtifactsSyncWork.length > 0;
@@ -427,7 +461,6 @@ FileStore.prototype.syncFiles = function (aFiles, sCwd, fnCallback) {
                             me.syncFile(oItem.id, oItem.modif, sCwd, fnCallbackAsyncL2);
                             break;
                     }
-
                 },
                 function (oError, oResult) {
                     fnCallbackAsyncL1(oError, oResult);

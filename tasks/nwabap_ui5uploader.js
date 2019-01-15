@@ -112,8 +112,19 @@ module.exports = function (grunt) {
                 transport_use_user_match: !!oOptions.ui5.transport_use_user_match,
                 transport_use_locked: !!oOptions.ui5.transport_use_locked,
                 calc_appindex: !!oOptions.ui5.calc_appindex
+            },
+            sync: {
+                isMatch: false
             }
         };
+
+        if (oOptions.sync.incremental) {
+            oFileStoreOptions.sync.isMatch = function (sFile) {
+                return grunt.file.isMatch({
+                    dot: true
+                }, oOptions.resources.src, [sFile]);
+            };
+        }
 
         var oLogger = new Logger(grunt);
 
